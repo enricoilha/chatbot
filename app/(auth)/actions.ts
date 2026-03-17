@@ -1,10 +1,8 @@
 "use server";
 
 import { z } from "zod";
-
-import { createUser, getUser } from "@/lib/db/queries";
-
-import { signIn } from "./auth";
+import { createClient } from "@/lib/supabase/server";
+import { ensureUserInDb } from "@/lib/db/queries";
 
 const authFormSchema = z.object({
   email: z.string().email(),
@@ -25,11 +23,16 @@ export const login = async (
       password: formData.get("password"),
     });
 
-    await signIn("credentials", {
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.signInWithPassword({
       email: validatedData.email,
       password: validatedData.password,
-      redirect: false,
     });
+
+    if (error) {
+      return { status: "failed" };
+    }
 
     return { status: "success" };
   } catch (error) {
@@ -61,17 +64,26 @@ export const register = async (
       password: formData.get("password"),
     });
 
-    const [user] = await getUser(validatedData.email);
+    const supabase = await createClient();
 
-    if (user) {
-      return { status: "user_exists" } as RegisterActionState;
-    }
-    await createUser(validatedData.email, validatedData.password);
-    await signIn("credentials", {
+    const { data, error } = await supabase.auth.signUp({
       email: validatedData.email,
       password: validatedData.password,
-      redirect: false,
     });
+
+    if (error) {
+      if (error.message.toLowerCase().includes("already registered")) {
+        return { status: "user_exists" };
+      }
+      return { status: "failed" };
+    }
+
+    if (data.user) {
+      await ensureUserInDb({
+        id: data.user.id,
+        email: validatedData.email,
+      });
+    }
 
     return { status: "success" };
   } catch (error) {

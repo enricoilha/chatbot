@@ -1,21 +1,31 @@
 import { NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import { signIn } from "@/app/(auth)/auth";
-import { isDevelopmentEnvironment } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/server";
+import { ensureUserInDb } from "@/lib/db/queries";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const redirectUrl = searchParams.get("redirectUrl") || "/";
 
-  const token = await getToken({
-    req: request,
-    secret: process.env.AUTH_SECRET,
-    secureCookie: !isDevelopmentEnvironment,
-  });
+  const supabase = await createClient();
 
-  if (token) {
+  const {
+    data: { user: existingUser },
+  } = await supabase.auth.getUser();
+
+  if (existingUser) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return signIn("guest", { redirect: true, redirectTo: redirectUrl });
+  const { data, error } = await supabase.auth.signInAnonymously();
+
+  if (error || !data.user) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  await ensureUserInDb({
+    id: data.user.id,
+    email: `guest-${Date.now()}`,
+  });
+
+  return NextResponse.redirect(new URL(redirectUrl, request.url));
 }
