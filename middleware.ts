@@ -23,9 +23,9 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
-    const redirectUrl = encodeURIComponent(request.url);
+    const redirectPath = encodeURIComponent(pathname + request.nextUrl.search);
     return NextResponse.redirect(
-      new URL(`/api/auth/guest?redirectUrl=${redirectUrl}`, request.url)
+      new URL(`/api/auth/guest?redirectUrl=${redirectPath}`, request.url)
     );
   }
 
